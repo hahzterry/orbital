@@ -1,8 +1,10 @@
 // @ts-nocheck
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { app } from "electron";
 import log from "electron-log"
+import { setVenmicSources, type VenmicSource } from "./features/config"
 import type { LinkData, Node, PatchBay as PatchBayType } from "@vencord/venmic";
 
 const getModuleUrl = (): string => {
@@ -80,7 +82,175 @@ export function listAudioSources(props?: string[]): Node[] {
   return result;
 }
 
-export function startAudioCapture(include: Node[]): boolean {
+export interface VenmicApp {
+  pid?: string
+  name: string
+  hasAudio: boolean
+}
+
+const WATCHDOG_INTERVAL_MS = 3000
+
+const GENERIC_COMMS = new Set(["wine", "wine64", "wine64-preloader", "wineserver", "python", "python3"])
+
+let captureCriteria: VenmicSource[] = []
+let seenSerials = new Set<string>()
+let watchdogTimer: ReturnType<typeof setInterval> | null = null
+let isCapturing = false
+
+// venmic matches a node when ALL props of ANY include target match the node.
+// Full node snapshots carry volatile props (object.serial, node.name, ...), so
+// new nodes created by the same app (games toggling outputs) would never match.
+// Use stable identifiers instead: pid+name, plus name and pid fallbacks.
+function buildIncludeCriteria(sources: VenmicSource[]): Node[] {
+  const targets: Node[] = []
+  const seen = new Set<string>()
+  const push = (target: Node) => {
+    const key = JSON.stringify(target)
+    if (!seen.has(key)) {
+      seen.add(key)
+      targets.push(target)
+    }
+  }
+  for (const source of sources) {
+    const pid = source["application.process.id"]
+    const name = source["application.name"]
+    if (pid && name) push({ "application.process.id": pid, "application.name": name })
+    if (name) push({ "application.name": name })
+    if (pid) push({ "application.process.id": pid })
+  }
+  return targets
+}
+
+function matchesCriteria(node: Node, criteria: VenmicSource[]): boolean {
+  return criteria.some((target) =>
+    Object.entries(target).every(([key, value]) => node[key] === value),
+  )
+}
+
+function linkDataFor(criteria: VenmicSource[]): LinkData {
+  return {
+    include: buildIncludeCriteria(criteria),
+    exclude: [{ "media.class": "Stream/Input/Audio" }],
+    ignore_devices: true,
+    only_speakers: true,
+    only_default_speakers: false,
+  }
+}
+
+function refreshSeenSerials(): void {
+  if (!patchBayInstance) return
+  const all = patchBayInstance.list() ?? []
+  seenSerials = new Set(
+    all.filter((n) => matchesCriteria(n, captureCriteria)).map((n) => n["object.serial"]),
+  )
+  log.info("[Venmic] Watchdog tracking", seenSerials.size, "matching node(s)")
+}
+
+// venmic's registry worker auto-links new matching nodes, but a periodic check
+// catches anything the event-driven path missed. Re-link only when a genuinely
+// new node appeared: link() tears down and rebuilds every loopback.
+function startWatchdog(): void {
+  stopWatchdog()
+  watchdogTimer = setInterval(() => {
+    if (!isCapturing || !patchBayInstance || captureCriteria.length === 0) return
+    try {
+      const all = patchBayInstance.list() ?? []
+      let discovered = false
+      for (const node of all) {
+        if (!matchesCriteria(node, captureCriteria)) continue
+        const serial = node["object.serial"]
+        if (!serial || seenSerials.has(serial)) continue
+        seenSerials.add(serial)
+        discovered = true
+      }
+      if (discovered) {
+        log.info("[Venmic] New matching node(s) appeared, re-linking")
+        patchBayInstance.link(linkDataFor(captureCriteria))
+        refreshSeenSerials()
+      }
+    } catch (e) {
+      log.warn("[Venmic] Watchdog check failed:", e)
+    }
+  }, WATCHDOG_INTERVAL_MS)
+}
+
+function stopWatchdog(): void {
+  if (watchdogTimer !== null) {
+    clearInterval(watchdogTimer)
+    watchdogTimer = null
+  }
+}
+
+function readProc(pid: string, file: string): string {
+  try {
+    return readFileSync(`/proc/${pid}/${file}`, "utf-8")
+  } catch {
+    return ""
+  }
+}
+
+// /proc/<pid>/stat: "pid (comm) state ppid ..." - comm may contain spaces/parens
+function isUnlistableProcess(pid: string): boolean {
+  const stat = readProc(pid, "stat")
+  if (!stat) return true
+  const parts = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/)
+  if (parts[0] === "Z") return true
+  return Number(parts[1]) === 2 // child of kthreadd => kernel thread
+}
+
+function processName(pid: string): string {
+  const comm = readProc(pid, "comm").trim()
+  if (!comm) return pid
+  const cmdline = readProc(pid, "cmdline").split("\0").filter(Boolean)
+  const binary = cmdline[0]
+  if (binary) {
+    const base = basename(binary).trim()
+    if (base && (GENERIC_COMMS.has(comm) || base !== comm)) return base
+  }
+  return comm
+}
+
+function isVenmicOwned(node: Node): boolean {
+  const description = node["node.description"] || ""
+  const name = node["node.name"] || ""
+  return description.startsWith("venmic-loopback") || name.startsWith("vencord-")
+}
+
+// Apps with active audio outputs come from venmic; everything else comes from
+// /proc so users can pick apps with no current output (e.g. minimized games).
+// Sorted by pid descending so new processes land on top.
+export function listApps(): VenmicApp[] {
+  const apps = new Map<string, VenmicApp>()
+
+  for (const node of listAudioSources()) {
+    if (isVenmicOwned(node)) continue
+    const pid = node["application.process.id"]
+    const name = node["application.name"] || node["node.name"] || "Unknown"
+    const key = pid || name
+    if (!key || apps.has(key)) continue
+    apps.set(key, { pid: pid || undefined, name, hasAudio: true })
+  }
+
+  const ownPids = new Set(app.getAppMetrics().map((p) => String(p.pid)))
+
+  let entries: string[] = []
+  try {
+    entries = readdirSync("/proc")
+  } catch (e) {
+    log.warn("[Venmic] Failed to read /proc:", e)
+  }
+
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue
+    if (ownPids.has(entry) || apps.has(entry)) continue
+    if (isUnlistableProcess(entry)) continue
+    apps.set(entry, { pid: entry, name: processName(entry), hasAudio: false })
+  }
+
+  return Array.from(apps.values()).sort((a, b) => Number(b.pid ?? -1) - Number(a.pid ?? -1))
+}
+
+export function startAudioCapture(include: VenmicSource[]): boolean {
   if (!patchBayInstance) {
     if (!importVenmic()) {
       log.error("[Venmic] Cannot start capture - venmic import failed");
@@ -96,51 +266,33 @@ export function startAudioCapture(include: Node[]): boolean {
     }
   }
 
-  if (!include || include.length === 0) {
+  const criteria = (include ?? []).filter(
+    (s) => s["application.process.id"] || s["application.name"],
+  )
+  if (criteria.length === 0) {
     log.error("[Venmic] No sources provided to capture");
     return false;
   }
 
-  const allSources = patchBayInstance.list() ?? [];
-  log.info("[Venmic] All sources count:", allSources.length);
+  captureCriteria = criteria
+  isCapturing = true
 
-  const uniqueAppIds = new Set<string>();
-  for (const node of include) {
-    const appId = node["application.process.id"] || node["application.name"];
-    if (appId) uniqueAppIds.add(appId);
-  }
-  log.info("[Venmic] Selected apps:", Array.from(uniqueAppIds));
-
-  const appSources: Node[] = [];
-  for (const appId of uniqueAppIds) {
-    const matching = allSources.filter((node) => {
-      const nodeAppId = node["application.process.id"] || node["application.name"];
-      return nodeAppId === appId;
-    });
-    appSources.push(...matching);
-  }
-
-  log.info("[Venmic] Total sources to link:", appSources.length);
-
-  if (appSources.length === 0) {
-    log.error("[Venmic] No matching sources found for selected apps");
-    return false;
-  }
-
-  const linkData: LinkData = {
-    include: appSources,
-    exclude: [{ "media.class": "Stream/Input/Audio" }],
-    ignore_devices: true,
-    only_speakers: true,
-    only_default_speakers: false,
-  };
-
-  log.info("[Venmic] Linking with", appSources.length, "sources");
+  const linkData = linkDataFor(criteria)
+  log.info("[Venmic] Linking with criteria:", buildIncludeCriteria(criteria));
   const result = patchBayInstance.link(linkData);
   log.info("[Venmic] Link result:", result);
+
+  setVenmicSources(criteria);
+  refreshSeenSerials();
+  startWatchdog();
+
   return result;
 }
 
 export function stopAudioCapture(): boolean {
+  isCapturing = false
+  stopWatchdog()
+  seenSerials.clear()
+  captureCriteria = []
   return patchBayInstance?.unlink() ?? false;
 }

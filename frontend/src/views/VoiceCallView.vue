@@ -153,7 +153,7 @@ import {
   useSoundPackStore,
 } from "@/stores"
 import { storeToRefs } from "pinia"
-import type { User, ScreenShareQuality, VenmicNode } from "@/types"
+import type { User, ScreenShareQuality, VenmicSource } from "@/types"
 import { playRemoteMessage } from "@/services/sounds"
 
 const props = withDefaults(defineProps<Props>(), {
@@ -688,7 +688,7 @@ const startElectronScreenShareWithQuality = async (
   quality: string,
   audio: boolean,
   sourceId: string,
-  audioSources?: VenmicNode[],
+  audioSources?: VenmicSource[],
 ) => {
   try {
     await startElectronScreenShare(quality as ScreenShareQuality, audio, sourceId, audioSources)

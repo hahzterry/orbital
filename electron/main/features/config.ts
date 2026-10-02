@@ -8,6 +8,11 @@ export interface HotkeySetting {
   accelerator: string
 }
 
+export interface VenmicSource {
+  "application.process.id"?: string
+  "application.name"?: string
+}
+
 export interface AppConfig {
   closeToTray: boolean
   hasSelectedCloseBehavior: boolean
@@ -17,6 +22,7 @@ export interface AppConfig {
     deafen: HotkeySetting
     ptt: HotkeySetting
   }
+  venmicSources: VenmicSource[]
 }
 
 export const DEFAULT_HOTKEYS: AppConfig["hotkeys"] = {
@@ -30,6 +36,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   hasSelectedCloseBehavior: false,
   skipUpdates: false,
   hotkeys: DEFAULT_HOTKEYS,
+  venmicSources: [],
 }
 
 let config: AppConfig = { ...DEFAULT_CONFIG }
@@ -89,5 +96,14 @@ export function setHotkeys(hotkeys: AppConfig["hotkeys"]): void {
 
 export function resetHotkeys(): void {
   config.hotkeys = { ...DEFAULT_HOTKEYS }
+  saveConfig()
+}
+
+export function getVenmicSources(): VenmicSource[] {
+  return config.venmicSources
+}
+
+export function setVenmicSources(sources: VenmicSource[]): void {
+  config.venmicSources = sources
   saveConfig()
 }

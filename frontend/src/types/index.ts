@@ -469,6 +469,17 @@ export interface VenmicNode {
   [key: string]: string | number | boolean | undefined
 }
 
+export interface VenmicSource {
+  "application.process.id"?: string
+  "application.name"?: string
+}
+
+export interface VenmicApp {
+  pid?: string
+  name: string
+  hasAudio: boolean
+}
+
 export interface License {
   name: string
   version: string
@@ -536,7 +547,10 @@ export interface ElectronAPI {
   venmicHasVenmic?: () => Promise<boolean>
   venmicHasPipeWire?: () => Promise<boolean>
   venmicListSources?: () => Promise<VenmicNode[]>
-  venmicStart?: (include: VenmicNode[]) => Promise<boolean>
+  venmicListApps?: () => Promise<VenmicApp[]>
+  venmicGetSavedSources?: () => Promise<VenmicSource[]>
+  venmicSaveSources?: (sources: VenmicSource[]) => Promise<void>
+  venmicStart?: (include: VenmicSource[]) => Promise<boolean>
   venmicStop?: () => Promise<boolean>
 }
 

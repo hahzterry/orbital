@@ -15,7 +15,7 @@ import {
   startScreenshare as startElectronScreenShareIPC,
 } from "@/services/electron"
 import { startAudioCapture, stopAudioCapture, getVirtualMicDeviceId } from "@/services/venmic"
-import type { ScreenShareQuality, VenmicNode } from "@/types"
+import type { ScreenShareQuality, VenmicSource } from "@/types"
 import type { LiveKitState } from "./useLiveKitState"
 
 export const SCREEN_VIEWER_EVENT_TYPE = "screen_viewer"
@@ -112,7 +112,7 @@ export function useLiveKitScreenShare(state: LiveKitState) {
     quality: ScreenShareQuality,
     audio: boolean,
     sourceId: string,
-    audioSources?: VenmicNode[],
+    audioSources?: VenmicSource[],
   ): Promise<void> => {
     console.log("[ScreenShare] startElectronScreenShare called:", {
       quality,
