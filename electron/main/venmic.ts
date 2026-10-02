@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { join, dirname, basename } from "node:path";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { app } from "electron";
 import log from "electron-log"
@@ -216,10 +216,62 @@ function isVenmicOwned(node: Node): boolean {
   return description.startsWith("venmic-loopback") || name.startsWith("vencord-")
 }
 
+// Processes that will never be audio capture sources. Kernel truncates comm to
+// 15 chars, so keep entries short. Applies to /proc entries only - venmic
+// nodes are audio sources by definition and always shown. wine* is
+// intentionally NOT blocked: it hosts audio for Proton games.
+const BLOCKED_COMMS = new Set([
+  // init & system services
+  "systemd", "dbus-daemon", "dbus-broker", "dbus-launch",
+  // audio infrastructure (services, never capture sources)
+  "pipewire", "pipewire-pulse", "wireplumber", "pulseaudio", "rtkit", "alsactl",
+  // desktop environments & compositors
+  "kwin_wayland", "gnome-shell", "plasmashell", "sway", "hyprland", "xfwm4",
+  "gdm", "gdm-session-worker", "lightdm", "sddm",
+  // terminals & shells
+  "bash", "zsh", "fish", "dash", "sh", "tmux", "screen", "konsole",
+  "gnome-terminal", "kitty",
+  // CLI / dev tools
+  "git", "ssh", "ssh-agent", "gpg", "gpg-agent", "curl", "wget", "make",
+  "cmake", "ninja", "gcc", "cc", "clang", "cargo", "rustc", "vim", "nvim",
+  "emacs", "less", "grep", "sed", "awk",
+  // editor/IDE helper daemons (never audio sources)
+  "gitstatusd", "gopls", "forkserver", "ksmserver",
+])
+
+// Prefixes match kernel-truncated comms (15 chars) and versioned daemon names.
+// Matching is case-insensitive.
+const BLOCKED_PREFIXES = [
+  "systemd-", "dbus-", "gvfs-", "xdg-",
+  // KDE / GTK session infrastructure
+  "kded", "kwin", "kaccess", "kactivity", "ksecret", "kwallet", "kdeconnect",
+  "baloo", "at-spi", "startplasma", "org_kde", "polkit-kde", "msm_kde",
+  "xembedsniproxy", "gmenudbusmenupr", "xsettingsd", "spectacle", "dconf",
+  "krunner", "kglobalaccel", "pamac-tray", "fossilize",
+  // dev tools / editors / runtimes / known non-audio apps
+  "code", "python", "steamwebhelper", "node", "limux", "vicinae",
+]
+
+function isBlockedProcess(comm: string): boolean {
+  if (!comm) return false
+  if (BLOCKED_COMMS.has(comm)) return true
+  const lower = comm.toLowerCase()
+  return BLOCKED_PREFIXES.some((prefix) => lower.startsWith(prefix))
+}
+
+function isOwnedByUser(pid: string): boolean {
+  try {
+    return statSync(`/proc/${pid}`).uid === process.getuid()
+  } catch {
+    return false
+  }
+}
+
 // Apps with active audio outputs come from venmic; everything else comes from
 // /proc so users can pick apps with no current output (e.g. minimized games).
-// Sorted by pid descending so new processes land on top.
-export function listApps(): VenmicApp[] {
+// System processes are filtered out unless includeAll is set. Sorted by pid
+// descending so new processes land on top.
+export function listApps(includeAll = false): VenmicApp[] {
   const apps = new Map<string, VenmicApp>()
 
   for (const node of listAudioSources()) {
@@ -244,6 +296,8 @@ export function listApps(): VenmicApp[] {
     if (!/^\d+$/.test(entry)) continue
     if (ownPids.has(entry) || apps.has(entry)) continue
     if (isUnlistableProcess(entry)) continue
+    if (!isOwnedByUser(entry)) continue
+    if (!includeAll && isBlockedProcess(readProc(entry, "comm").trim())) continue
     apps.set(entry, { pid: entry, name: processName(entry), hasAudio: false })
   }
 

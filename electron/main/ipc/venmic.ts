@@ -20,9 +20,9 @@ export function registerVenmicIpc() {
     log.info("[IPC] venmic:list-sources called")
     return listAudioSources()
   })
-  ipcMain.handle("venmic:list-apps", () => {
-    log.info("[IPC] venmic:list-apps called")
-    return listApps()
+  ipcMain.handle("venmic:list-apps", (_, includeAll) => {
+    log.info("[IPC] venmic:list-apps called, includeAll:", includeAll === true)
+    return listApps(includeAll === true)
   })
   ipcMain.handle("venmic:get-saved-sources", () => {
     log.info("[IPC] venmic:get-saved-sources called")

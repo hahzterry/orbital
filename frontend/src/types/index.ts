@@ -547,7 +547,7 @@ export interface ElectronAPI {
   venmicHasVenmic?: () => Promise<boolean>
   venmicHasPipeWire?: () => Promise<boolean>
   venmicListSources?: () => Promise<VenmicNode[]>
-  venmicListApps?: () => Promise<VenmicApp[]>
+  venmicListApps?: (includeAll?: boolean) => Promise<VenmicApp[]>
   venmicGetSavedSources?: () => Promise<VenmicSource[]>
   venmicSaveSources?: (sources: VenmicSource[]) => Promise<void>
   venmicStart?: (include: VenmicSource[]) => Promise<boolean>

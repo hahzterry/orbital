@@ -24,6 +24,15 @@
           class="w-full pl-8 pr-3 py-1.5 rounded-lg border border-gray-600 bg-gray-700/30 text-sm text-gray-200 placeholder-gray-500 focus:border-indigo-500 focus:outline-none" />
       </div>
 
+      <label class="flex items-center gap-2 mb-2 cursor-pointer select-none">
+        <input
+          v-model="showAllProcesses"
+          type="checkbox"
+          class="accent-indigo-500"
+          @change="loadSources(showAllProcesses)" />
+        <span class="text-xs text-gray-500">Show system processes</span>
+      </label>
+
       <div class="space-y-1 max-h-40 overflow-y-auto">
         <button
           v-for="source in filteredSources"
@@ -80,6 +89,7 @@ const emit = defineEmits<{
 
 const sources = ref<VenmicApp[]>([])
 const searchQuery = ref("")
+const showAllProcesses = ref(false)
 const isLoading = ref(true)
 const error = ref<string | null>(null)
 
@@ -93,12 +103,12 @@ onMounted(async () => {
   await loadSources()
 })
 
-async function loadSources() {
+async function loadSources(includeAll = false) {
   isLoading.value = true
   error.value = null
 
   try {
-    sources.value = await listApps()
+    sources.value = await listApps(includeAll)
   } catch {
     error.value = "Failed to load audio sources"
   } finally {

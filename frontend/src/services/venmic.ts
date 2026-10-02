@@ -22,13 +22,13 @@ export async function hasPipeWire(): Promise<boolean> {
   return result
 }
 
-export async function listApps(): Promise<VenmicApp[]> {
+export async function listApps(includeAll = false): Promise<VenmicApp[]> {
   if (!window.electronAPI?.venmicListApps) {
     console.log("[VenmicService] venmicListApps not available")
     return []
   }
-  console.log("[VenmicService] Calling venmicListApps")
-  const result = await window.electronAPI.venmicListApps()
+  console.log("[VenmicService] Calling venmicListApps, includeAll:", includeAll)
+  const result = await window.electronAPI.venmicListApps(includeAll)
   console.log("[VenmicService] venmicListApps result:", result)
   return result
 }

@@ -99,7 +99,7 @@ export interface ElectronAPI {
   venmicHasVenmic: () => Promise<boolean>
   venmicHasPipeWire: () => Promise<boolean>
   venmicListSources: () => Promise<VenmicNode[]>
-  venmicListApps: () => Promise<VenmicApp[]>
+  venmicListApps: (includeAll?: boolean) => Promise<VenmicApp[]>
   venmicGetSavedSources: () => Promise<VenmicSource[]>
   venmicSaveSources: (sources: VenmicSource[]) => Promise<void>
   venmicStart: (include: VenmicSource[]) => Promise<boolean>
@@ -205,7 +205,7 @@ const electronAPI: ElectronAPI = {
   venmicHasVenmic: () => ipcRenderer.invoke("venmic:has-venmic"),
   venmicHasPipeWire: () => ipcRenderer.invoke("venmic:has-pipewire"),
   venmicListSources: () => ipcRenderer.invoke("venmic:list-sources"),
-  venmicListApps: () => ipcRenderer.invoke("venmic:list-apps"),
+  venmicListApps: (includeAll) => ipcRenderer.invoke("venmic:list-apps", includeAll),
   venmicGetSavedSources: () => ipcRenderer.invoke("venmic:get-saved-sources"),
   venmicSaveSources: (sources) => ipcRenderer.invoke("venmic:save-sources", sources),
   venmicStart: (include) => ipcRenderer.invoke("venmic:start", include),
