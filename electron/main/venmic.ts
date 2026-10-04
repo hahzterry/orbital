@@ -4,8 +4,12 @@ import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, utilityProcess, type UtilityProcess } from "electron";
 import log from "electron-log"
-import { setVenmicSources, type VenmicSource } from "./features/config"
 import type { LinkData, Node } from "@vencord/venmic";
+
+export interface VenmicSource {
+  "application.process.id"?: string
+  "application.name"?: string
+}
 
 const getModuleUrl = (): string => {
   if (typeof import.meta !== "undefined" && import.meta.url && import.meta.url !== "undefined") {
@@ -233,6 +237,18 @@ const RELINK_STABILITY_MS = 4000
 const GENERIC_COMMS = new Set(["wine", "wine64", "wine64-preloader", "wineserver", "python", "python3"])
 
 let captureCriteria: VenmicSource[] = []
+
+// Selected audio sources live in session memory only. Pids and process names
+// are ephemeral, so they are never written to persistent config.
+let savedSources: VenmicSource[] = []
+
+export function getSavedVenmicSources(): VenmicSource[] {
+  return savedSources
+}
+
+export function setSavedVenmicSources(sources: VenmicSource[]): void {
+  savedSources = sources ?? []
+}
 let seenSerials = new Set<string>()
 let pendingSerials = new Set<string>()
 let watchdogTimer: ReturnType<typeof setInterval> | null = null
@@ -501,7 +517,7 @@ export async function startAudioCapture(include: VenmicSource[]): Promise<boolea
     return false;
   }
 
-  setVenmicSources(criteria);
+  setSavedVenmicSources(criteria);
   await refreshSeenSerials();
   startWatchdog();
 

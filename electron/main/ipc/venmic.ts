@@ -1,7 +1,6 @@
 import { ipcMain } from "electron"
 import log from "electron-log"
-import { hasVenmic, hasPipeWire, listAudioSources, listApps, startAudioCapture, stopAudioCapture } from "../venmic"
-import { getVenmicSources, setVenmicSources } from "../features/config"
+import { hasVenmic, hasPipeWire, listAudioSources, listApps, startAudioCapture, stopAudioCapture, getSavedVenmicSources, setSavedVenmicSources } from "../venmic"
 
 export function registerVenmicIpc() {
   ipcMain.handle("venmic:has-venmic", async () => {
@@ -30,13 +29,13 @@ export function registerVenmicIpc() {
   })
   ipcMain.handle("venmic:get-saved-sources", async () => {
     log.info("[IPC] venmic:get-saved-sources called")
-    const sources = await getVenmicSources()
+    const sources = await getSavedVenmicSources()
     log.info("[IPC] venmic:get-saved-sources result:", JSON.stringify(sources))
     return sources
   })
   ipcMain.handle("venmic:save-sources", (_, sources) => {
     log.info("[IPC] venmic:save-sources called with:", JSON.stringify(sources))
-    setVenmicSources(sources ?? [])
+    setSavedVenmicSources(sources ?? [])
   })
   ipcMain.handle("venmic:start", async (_, include) => {
     log.info("[IPC] venmic:start called with:", JSON.stringify(include))

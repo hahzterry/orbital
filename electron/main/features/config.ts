@@ -8,11 +8,6 @@ export interface HotkeySetting {
   accelerator: string
 }
 
-export interface VenmicSource {
-  "application.process.id"?: string
-  "application.name"?: string
-}
-
 export interface AppConfig {
   closeToTray: boolean
   hasSelectedCloseBehavior: boolean
@@ -22,7 +17,6 @@ export interface AppConfig {
     deafen: HotkeySetting
     ptt: HotkeySetting
   }
-  venmicSources: VenmicSource[]
 }
 
 export const DEFAULT_HOTKEYS: AppConfig["hotkeys"] = {
@@ -36,7 +30,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   hasSelectedCloseBehavior: false,
   skipUpdates: false,
   hotkeys: DEFAULT_HOTKEYS,
-  venmicSources: [],
 }
 
 let config: AppConfig = { ...DEFAULT_CONFIG }
@@ -51,8 +44,17 @@ export function loadConfig(): void {
     const configPath = getConfigPath()
     if (fs.existsSync(configPath)) {
       const data = fs.readFileSync(configPath, "utf-8")
-      config = { ...DEFAULT_CONFIG, ...JSON.parse(data) }
+      const parsed = JSON.parse(data) as Record<string, unknown>
+      // One-time migration: venmic source selections (pids + process names)
+      // are ephemeral and no longer belong in persistent config.
+      const hadLegacyVenmicSources = "venmicSources" in parsed
+      delete parsed.venmicSources
+      config = { ...DEFAULT_CONFIG, ...(parsed as Partial<AppConfig>) }
       log.info("Config loaded from:", configPath)
+      if (hadLegacyVenmicSources) {
+        saveConfig()
+        log.info("Removed legacy venmicSources from persistent config")
+      }
     } else {
       log.info("No config file found, using defaults")
     }
@@ -96,14 +98,5 @@ export function setHotkeys(hotkeys: AppConfig["hotkeys"]): void {
 
 export function resetHotkeys(): void {
   config.hotkeys = { ...DEFAULT_HOTKEYS }
-  saveConfig()
-}
-
-export function getVenmicSources(): VenmicSource[] {
-  return config.venmicSources
-}
-
-export function setVenmicSources(sources: VenmicSource[]): void {
-  config.venmicSources = sources
   saveConfig()
 }
