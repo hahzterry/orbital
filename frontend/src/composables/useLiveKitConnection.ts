@@ -3,7 +3,7 @@ import { apiService } from "@/services/api"
 import { usePresenceStore } from "@/stores/presence"
 import { useCallStore } from "@/stores/call"
 import { debugLog } from "@/utils/debug"
-import { playJoinRoom, playLeaveRoom } from "@/services/sounds"
+import { playJoinRoom, playLeaveRoom, stopReconnectingLoop } from "@/services/sounds"
 import type { LiveKitState } from "./useLiveKitState"
 
 export interface UseLiveKitConnectionDependencies {
@@ -141,6 +141,8 @@ export function useLiveKitConnection(state: LiveKitState, deps: UseLiveKitConnec
 
   const cleanup = () => {
     debugLog(`[LiveKit][INFO]: 'Cleaning up LiveKit...'`)
+
+    stopReconnectingLoop()
 
     const currentRoom = state.room.value
 

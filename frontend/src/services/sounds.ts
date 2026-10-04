@@ -161,6 +161,13 @@ function loadSound(packId: string): ReturnType<typeof Howl> {
 }
 
 function playSoundById(packId: string, soundId: string): void {
+  // Events without a sprite entry in the pack stay silent by default
+  // (e.g. "reconnecting"/"reconnected" until a pack author adds them).
+  // Check before loading so we don't even fetch audio for unknown events.
+  if (!(soundId in getSprites(packId))) {
+    return
+  }
+
   const sound = loadSound(packId)
   if (sound.state() === "loaded") {
     sound.play(soundId)
@@ -219,6 +226,8 @@ export function useSounds() {
   const playMessage = () => playLocalSound("message")
   const playViewerJoined = () => playLocalSound("viewer_joined")
   const playViewerLeft = () => playLocalSound("viewer_left")
+  const playReconnecting = () => playLocalSound("reconnecting")
+  const playReconnected = () => playLocalSound("reconnected")
 
   const playRemoteMute = (soundPack: string) => playRemoteSound("mute", soundPack)
   const playRemoteUnmute = (soundPack: string) => playRemoteSound("unmute", soundPack)
@@ -250,6 +259,8 @@ export function useSounds() {
     playMessage,
     playViewerJoined,
     playViewerLeft,
+    playReconnecting,
+    playReconnected,
     playRemoteMute,
     playRemoteUnmute,
     playRemoteDeafen,
@@ -324,6 +335,52 @@ export function playRemoteViewerJoined(soundPack: string): void {
 
 export function playRemoteViewerLeft(soundPack: string): void {
   playRemoteSound("viewer_left", soundPack)
+}
+
+export function playReconnecting(): void {
+  playLocalSound("reconnecting")
+}
+
+export function playReconnected(): void {
+  playLocalSound("reconnected")
+}
+
+let reconnectLoopTimer: ReturnType<typeof setTimeout> | null = null
+
+function getSoundDuration(packId: string, soundId: string): number | null {
+  const sprite = getSprites(packId)[soundId]
+  return sprite && sprite.duration > 0 ? sprite.duration : null
+}
+
+function scheduleReconnectTick(): void {
+  // Re-read the duration on every tick so switching sound packs mid-reconnect
+  // picks up the new pack's timing (or stops if the new pack has no sprite).
+  const duration = getSoundDuration(getUserSoundPack(), "reconnecting")
+  if (!duration) return
+  reconnectLoopTimer = setTimeout(() => {
+    playLocalSound("reconnecting")
+    scheduleReconnectTick()
+  }, duration)
+}
+
+/**
+ * Start looping the "reconnecting" chime for as long as reconnection is in
+ * progress. The repeat interval comes from the "reconnecting" sprite duration
+ * in the current sound pack - if the pack has no such sprite, nothing plays
+ * at all. Call stopReconnectingLoop() when reconnecting ends.
+ */
+export function startReconnectingLoop(): void {
+  stopReconnectingLoop()
+  playLocalSound("reconnecting")
+  scheduleReconnectTick()
+}
+
+/** Stop the reconnecting chime loop started by startReconnectingLoop(). */
+export function stopReconnectingLoop(): void {
+  if (reconnectLoopTimer) {
+    clearTimeout(reconnectLoopTimer)
+    reconnectLoopTimer = null
+  }
 }
 
 export { soundPacks, DEFAULT_SOUND_PACK_ID }

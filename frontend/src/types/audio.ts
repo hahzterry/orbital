@@ -100,6 +100,8 @@ export type SoundEvent =
   | "message"
   | "viewer_joined"
   | "viewer_left"
+  | "reconnecting"
+  | "reconnected"
 
 /** Default audio settings */
 export const defaultAudioSettings: AudioSettings = {

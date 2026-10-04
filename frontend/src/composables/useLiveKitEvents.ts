@@ -7,11 +7,19 @@ import type {
   RemoteTrackPublication,
 } from "livekit-client"
 import { useAudioTracksStore } from "@/stores/audioTracks"
-import { debugLog, debugWarn } from "@/utils/debug"
+import { useCallStore } from "@/stores/call"
+import { playReconnected, startReconnectingLoop, stopReconnectingLoop } from "@/services/sounds"
+import { debugLog, debugWarn, debugError } from "@/utils/debug"
 import type { LiveKitState } from "./useLiveKitState"
 
-export function useLiveKitEvents(state: LiveKitState) {
+export interface UseLiveKitEventsDependencies {
+  /** Called after the room reconnects, to verify/repair the local audio pipeline */
+  onRoomReconnected?: () => Promise<boolean> | boolean | Promise<void> | void
+}
+
+export function useLiveKitEvents(state: LiveKitState, deps?: UseLiveKitEventsDependencies) {
   const audioTracksStore = useAudioTracksStore()
+  const callStore = useCallStore()
 
   const handleRemoteTrack = (
     track: RemoteAudioTrack | RemoteVideoTrack,
@@ -370,15 +378,38 @@ export function useLiveKitEvents(state: LiveKitState) {
 
     lkRoom.on(RoomEvent.Disconnected, async (reason) => {
       debugWarn(`[LiveKit][WARN]: Disconnected from room: ${reason || "unknown reason"}`)
+      stopReconnectingLoop()
       state.isConnected.value = false
+      state.isReconnecting.value = false
+      callStore.setReconnecting(false)
     })
 
     lkRoom.on(RoomEvent.Reconnecting, () => {
       debugWarn(`[LiveKit][WARN]: 'Reconnecting to room...'`)
+      state.isReconnecting.value = true
+      callStore.setReconnecting(true)
+      startReconnectingLoop()
     })
 
-    lkRoom.on(RoomEvent.Reconnected, () => {
+    lkRoom.on(RoomEvent.Reconnected, async () => {
       debugLog(`[LiveKit][INFO]: 'Reconnected to room'`)
+      stopReconnectingLoop()
+      playReconnected()
+
+      // The SDK restarts the local audio track (and its noise suppression
+      // processor) during reconnect; if that failed, the mic stays dead while
+      // the user still appears in the room. Verify and repair it here.
+      try {
+        const recovered = await deps?.onRoomReconnected?.()
+        if (recovered === false) {
+          debugError(`[LiveKit][ERROR]: Local audio recovery after reconnect reported failure`)
+        }
+      } catch (error) {
+        debugError(`[LiveKit][ERROR]: Local audio recovery after reconnect threw:`, error)
+      }
+
+      state.isReconnecting.value = false
+      callStore.setReconnecting(false)
     })
   }
 

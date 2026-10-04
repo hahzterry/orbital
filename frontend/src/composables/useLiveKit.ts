@@ -29,7 +29,9 @@ export function useLiveKit(options: UseLiveKitOptions) {
   const audio = useLiveKitAudio(state)
   const camera = useLiveKitCamera(state)
   const screenShare = useLiveKitScreenShare(state)
-  const events = useLiveKitEvents(state)
+  const events = useLiveKitEvents(state, {
+    onRoomReconnected: () => audio.recoverLocalAudioAfterReconnect(),
+  })
 
   const connectionDeps = {
     setupRoomEventListeners: events.setupRoomEventListeners,
@@ -61,6 +63,7 @@ export function useLiveKit(options: UseLiveKitOptions) {
     room: state.room,
     isConnected: state.isConnected,
     isConnecting: state.isConnecting,
+    isReconnecting: state.isReconnecting,
     connectionError: state.connectionError,
     localParticipant: state.localParticipant,
     isScreenSharing: state.isScreenSharing,
