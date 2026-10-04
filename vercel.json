@@ -1,9 +1,10 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
     "backend": {
       "root": "backend",
-      "runtime": "go"
+      "entrypoint": "cmd/server",
+      "runtime": "go",
+      "framework": "go"
     },
     "electron": {
       "root": "electron",
