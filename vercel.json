@@ -6,10 +6,6 @@
       "runtime": "go",
       "framework": "go"
     },
-    "electron": {
-      "root": "electron",
-      "framework": "vite"
-    },
     "frontend": {
       "root": "frontend",
       "framework": "vite"
