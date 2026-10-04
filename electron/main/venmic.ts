@@ -525,6 +525,7 @@ export async function startAudioCapture(include: VenmicSource[]): Promise<boolea
 }
 
 export async function stopAudioCapture(): Promise<boolean> {
+  const wasCapturing = isCapturing
   isCapturing = false
   stopWatchdog()
   seenSerials.clear()
@@ -533,6 +534,7 @@ export async function stopAudioCapture(): Promise<boolean> {
   if (!worker) return false
   try {
     await request("unlink", undefined, REQUEST_TIMEOUT_MS.unlink)
+    if (wasCapturing) log.info("[Venmic] Audio capture stopped")
     return true
   } catch (e) {
     log.warn("[Venmic] Unlink failed:", e)
